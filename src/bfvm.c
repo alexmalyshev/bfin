@@ -62,6 +62,20 @@ static jumpstack *init_jumpstack(void) {
     return stack;
 }
 
+/** @brief Frees all the jumpstacks associated with stack.
+ *  @param stack the jumpstack we want to deallocate.
+ *  @return The resulting jumpstack after freeing the full jumpstacks in stack.
+ */
+static void destroy_jumpstack(jumpstack *stack) {
+    jumpstack *dead;
+    
+    while (stack != NULL) {
+        dead = stack;
+        stack = stack->next;
+        free(dead);
+    }
+}
+
 /** @brief Pushes on the address of a left bracket onto stack
  *  @param stack The address of the jumpstack we want to push leftbracket on.
  *  @param leftbracket The address of the left bracket we want to store.
@@ -225,12 +239,10 @@ static char *match_right(char *line) {
 static void execute(char *line) {
     char *c;
     char *right;
-    jumpstack *stack;
+    jumpstack *stack = NULL;
 
     if (line == NULL)
         return;
-
-    stack = init_jumpstack();
 
     for (c = line; *c != '\0'; ++c) {
         switch (*c) {
@@ -281,16 +293,18 @@ static void execute(char *line) {
                 break;
             case ']':
                 if (*data != 0) {
-                    c = stack->leftbracket;
-                    if (c == NULL) {
+                    if (stack == NULL || stack->leftbracket == NULL) {
                         fputs("Error: ']' with no matching '['\n",stderr);
                         return;
+
                     }
+                    c = stack->leftbracket;
                 } else
                     stack = pop_jump(stack);
                 break;
         }
     }
+    destroy_jumpstack(stack);
 }
 
 /** @brief Runs the brainfuck virtual machine.
@@ -311,9 +325,9 @@ int main(int argc, char *argv[]) {
     char *line;
     FILE *file;
 
-    chunklen = sysconf(_SC_PAGESIZE) - 40;
+    chunklen = sysconf(_SC_PAGESIZE) - 8;
     if (chunklen < 0)
-        chunklen += 40;
+        chunklen += 8;
 
     page = init_memchunk();
     data = page->mem + chunklen/2;
@@ -325,6 +339,8 @@ int main(int argc, char *argv[]) {
             fprintf(stderr, "Error: Could not open %s\n", argv[1]);
         else {
             line = getprog(file, line);
+
+            fclose(file);
 
             execute(line);
 
