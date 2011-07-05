@@ -64,7 +64,7 @@ static jumpstack *init_jumpstack(void) {
 
 /** @brief Frees all the jumpstacks associated with stack.
  *  @param stack the jumpstack we want to deallocate.
- *  @return The resulting jumpstack after freeing the full jumpstacks in stack.
+ *  @return Void.
  */
 static void destroy_jumpstack(jumpstack *stack) {
     jumpstack *dead;
