@@ -1,5 +1,0 @@
-# Ignore test files
-test*
-
-# No need for config doxygen file
-Doxyfile
