@@ -56,7 +56,7 @@ static char *data;
 static jumpstack *init_jumpstack(void) {
     jumpstack *stack = calloc(1, sizeof(jumpstack));
     if (stack == NULL) {
-        fprintf(stderr, "Error: calloc failed, exiting");
+        fputs("Error: calloc failed, exiting\n", stderr);
         exit(1);
     }
     return stack;
@@ -108,11 +108,11 @@ static memchunk *init_memchunk(void) {
     memchunk *chunk;
 
     if ((chunk = malloc(sizeof(memchunk))) == NULL) {
-        perror("Error: malloc failed, exiting");
+        fputs("Error: malloc failed, exiting\n", stderr);
         exit(1);
     }
     if ((chunk->mem = calloc(1, chunklen)) == NULL) {
-        perror("Error: calloc failed, exiting");
+        fputs("Error: calloc failed, exiting\n", stderr);
         exit(1);
     }
     
@@ -276,7 +276,12 @@ static void execute(char *line) {
                 putchar(*data);
                 break;
             case ',':
+                /* need to clear out stdin after calling getchar().
+                   otherwise the rest of the line would be passed
+                   as 'line' in main(), and we'd print "bfvm: bfvm: " */
                 *data = getchar();
+                while (*c != '\n')
+                    *c = getchar();
                 break;
             case '[':
                 right = match_right(c);
@@ -286,10 +291,9 @@ static void execute(char *line) {
                         fputs("Error: '[' with no matching ']'\n", stderr);
                         return;
                     }
-                } else {
-                    if (right != NULL)
-                        stack = push_jump(stack, c);
                 }
+                else if (right != NULL)
+                    stack = push_jump(stack, c);
                 break;
             case ']':
                 if (*data != 0) {
@@ -299,7 +303,8 @@ static void execute(char *line) {
 
                     }
                     c = stack->leftbracket;
-                } else
+                }
+                else
                     stack = pop_jump(stack);
                 break;
         }
@@ -308,23 +313,27 @@ static void execute(char *line) {
 }
 
 /** @brief Runs the brainfuck virtual machine.
- *
- *  Usage: $ bfvm
- *         Sets up the vm and starts the interpreter. Every line passed to the
- *         interpreter must be a valid brainfuck program, not just part of one.
- *
- *         $ bfvm filename
- *         Reads in the input file and executes it, then starts the
- *         interpreter.
- *
  *  @param argc the number of arguments.
  *  @param argv the array of arguments.
  *  @return Success status
  */
 int main(int argc, char *argv[]) {
+    /*
+     * Usage: bfvm
+     *        Sets up the vm and starts the interpreter. Every line passed to
+     *        the interpreter must be a valid brainfuck program, not just part
+     *        of one.
+     * 
+     *        bfvm <filename>
+     *        Reads in the input file and executes it, then starts the
+     *        interpreter.
+     */
+
     char *line;
     FILE *file;
 
+    /* hopefully this -8 will be enough for malloc's extra block data
+       and that malloc will simply hand us the entire page */
     chunklen = sysconf(_SC_PAGESIZE) - 8;
     if (chunklen < 0)
         chunklen += 8;

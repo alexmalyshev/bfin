@@ -1,1 +1,4 @@
-A simple implementation (one ~10 KB .c file) of a brainfuck virtual machine.
+A simple implementation (one ~11 KB .c file) of a brainfuck virtual machine.
+
+If given no filename argument will simply run as a brainfuck interpreter,
+otherwise will execute the file first then start interpreter.
