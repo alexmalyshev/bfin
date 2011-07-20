@@ -298,7 +298,7 @@ static void execute(char *line) {
             case ']':
                 if (*data != 0) {
                     if (stack == NULL || stack->leftbracket == NULL) {
-                        fputs("Error: ']' with no matching '['\n",stderr);
+                        fputs("Error: ']' with no matching '['\n", stderr);
                         return;
 
                     }
