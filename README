@@ -3,3 +3,6 @@ A simple implementation (one ~12 KB .c file) of a brainfuck virtual machine.
 If no filename argument is given then the program will simply run as a
 brainfuck interpreter, otherwise the program will execute the file first and
 then run as an interpreter.
+
+The one and only source file (src/bfvm.c) is licensed under the terms specified
+in the LICENSE file (3-clause BSD license).
