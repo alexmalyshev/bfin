@@ -38,6 +38,23 @@ typedef struct jumpstack_t {
     char *leftbracket;          /**< the address of a left bracket in memory */
 } jumpstack;
 
+/* jumpstack functions */
+static jumpstack *init_jumpstack(void);
+static void destroy_jumpstack(jumpstack *);
+static jumpstack *push_jump(jumpstack *, char *);
+static jumpstack *pop_jump(jumpstack *);
+/* memchunk functions */
+static memchunk *init_memchunk(void);
+static memchunk *overflow_left(memchunk *);
+static memchunk *overflow_right(memchunk *);
+/* reading input */
+static char *get_line(char *);
+static char *get_prog(FILE *, char *);
+/* executing brainfuck code */
+static char *match_right(char *);
+static void execute(char *);
+
+
 /** @brief The size of chunks of memory on this system */
 static long chunklen;
 
@@ -46,6 +63,63 @@ static memchunk *page;
 
 /** @brief The data pointer specified by the brainfuck language */
 static char *data;
+
+
+/** @brief Runs the brainfuck virtual machine.
+ *  @param argc the number of arguments.
+ *  @param argv the array of arguments.
+ *  @return Success status
+ */
+int main(int argc, char *argv[]) {
+    /*
+     * Usage: bfvm
+     *        Sets up the vm and starts the interpreter. Every line passed to
+     *        the interpreter must be a valid brainfuck program, not just part
+     *        of one.
+     * 
+     *        bfvm <filename>
+     *        Reads in the input file and executes it, then starts the
+     *        interpreter.
+     */
+
+    char *line;
+    FILE *file;
+
+    /* hopefully this -8 will be enough for malloc's extra block data
+       and that malloc will simply hand us the entire page */
+    chunklen = sysconf(_SC_PAGESIZE) - 8;
+    if (chunklen < 0)
+        chunklen += 8;
+
+    page = init_memchunk();
+    data = page->mem + chunklen/2;
+    line = malloc(chunklen + 1);
+
+    if (argc == 2) {
+        file = fopen(argv[1], "r");
+        if (file == NULL)
+            fprintf(stderr, "Error: Could not open %s\n", argv[1]);
+        else {
+            line = get_prog(file, line);
+
+            fclose(file);
+
+            execute(line);
+
+            line = realloc(line, chunklen);
+        }
+    }
+
+    for (;;) {
+        printf("bfvm: ");
+        line = get_line(line);
+ 
+        execute(line);
+
+        line = realloc(line, chunklen);
+    }
+    return 0;
+}
 
 /** @brief Initializes a new jumpstack.
  *
@@ -152,7 +226,7 @@ static memchunk *overflow_right(memchunk *chunk) {
  *  @param start the buffer we want to use to copy the line of text into.
  *  @return The line of text read in from the terminal.
  */
-static char *getline(char *start) {
+static char *get_line(char *start) {
     char *end = start;
     size_t len = chunklen;
 
@@ -181,7 +255,7 @@ static char *getline(char *start) {
  *  @param start the buffer we want to use to copy the file text into.
  *  @return The text read in from file.
  */
-static char *getprog(FILE *file, char *start) {
+static char *get_prog(FILE *file, char *start) {
     char *end = start;
     size_t len = chunklen;
     size_t read;
@@ -310,60 +384,4 @@ static void execute(char *line) {
         }
     }
     destroy_jumpstack(stack);
-}
-
-/** @brief Runs the brainfuck virtual machine.
- *  @param argc the number of arguments.
- *  @param argv the array of arguments.
- *  @return Success status
- */
-int main(int argc, char *argv[]) {
-    /*
-     * Usage: bfvm
-     *        Sets up the vm and starts the interpreter. Every line passed to
-     *        the interpreter must be a valid brainfuck program, not just part
-     *        of one.
-     * 
-     *        bfvm <filename>
-     *        Reads in the input file and executes it, then starts the
-     *        interpreter.
-     */
-
-    char *line;
-    FILE *file;
-
-    /* hopefully this -8 will be enough for malloc's extra block data
-       and that malloc will simply hand us the entire page */
-    chunklen = sysconf(_SC_PAGESIZE) - 8;
-    if (chunklen < 0)
-        chunklen += 8;
-
-    page = init_memchunk();
-    data = page->mem + chunklen/2;
-    line = malloc(chunklen + 1);
-
-    if (argc == 2) {
-        file = fopen(argv[1], "r");
-        if (file == NULL)
-            fprintf(stderr, "Error: Could not open %s\n", argv[1]);
-        else {
-            line = getprog(file, line);
-
-            fclose(file);
-
-            execute(line);
-
-            line = realloc(line, chunklen);
-        }
-    }
-
-    for (;;) {
-        printf("bfvm: ");
-        line = getline(line);
- 
-        execute(line);
-
-        line = realloc(line, chunklen);
-    }
-    return 0;
 }
