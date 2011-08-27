@@ -25,17 +25,17 @@
 #include <string.h>
 #include <unistd.h>
 
-/** @brief A chunk of memory */
+/** @brief A chunk of memory. */
 typedef struct memchunk_t {
-    struct memchunk_t *next;    /**< the next chunk of memory */
-    struct memchunk_t *prev;    /**< the previous chunk of memory */
-    char *mem;                  /**< the block of bytes used as memory */
+    struct memchunk_t *next;    /**< the next chunk of memory. */
+    struct memchunk_t *prev;    /**< the previous chunk of memory. */
+    char *mem;                  /**< the block of bytes used as memory. */
 } memchunk;
 
-/** @brief The stack used for jumping back to left brackets */
+/** @brief The stack used for jumping back to left brackets. */
 typedef struct jumpstack_t {
-    struct jumpstack_t *next;   /**< the next stack */
-    char *leftbracket;          /**< the address of a left bracket in memory */
+    struct jumpstack_t *next;   /**< the next stack. */
+    char *leftbracket;          /**< the address of a left bracket in memory. */
 } jumpstack;
 
 /* jumpstack functions */
@@ -55,20 +55,20 @@ static char *match_right(char *);
 static void execute(char *);
 
 
-/** @brief The size of chunks of memory on this system */
+/** @brief The size of chunks of memory on this system. */
 static long chunklen;
 
-/** @brief The current chunk/page of memory we are on */
+/** @brief The current chunk/page of memory we are on. */
 static memchunk *page;
 
-/** @brief The data pointer specified by the brainfuck language */
+/** @brief The data pointer specified by the brainfuck language. */
 static char *data;
 
 
 /** @brief Runs the brainfuck virtual machine.
  *  @param argc the number of arguments.
  *  @param argv the array of arguments.
- *  @return Success status
+ *  @return Success status.
  */
 int main(int argc, char *argv[]) {
     /*
@@ -150,10 +150,10 @@ static void destroy_jumpstack(jumpstack *stack) {
     }
 }
 
-/** @brief Pushes on the address of a left bracket onto stack
+/** @brief Pushes the address of a left bracket onto stack.
  *  @param stack The address of the jumpstack we want to push leftbracket on.
  *  @param leftbracket The address of the left bracket we want to store.
- *  @return The resulting jumpstack from pushing leftbracket onto stack
+ *  @return The resulting jumpstack from pushing leftbracket onto stack.
  */
 static jumpstack *push_jump(jumpstack *stack, char *leftbracket) {
     jumpstack *new = init_jumpstack();
