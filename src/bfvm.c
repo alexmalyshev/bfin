@@ -17,7 +17,10 @@
  *  the top of the jump stack.
  *
  *  @author Alexander Malyshev
- *  @bug No known bugs.
+ *  @bug This file contains code to try to get malloc to give us pages of memory
+ *       instead of just random unaligned memory blocks. This code is hacky and
+ *       not guaranteed to work. In the near future, I will replace this code
+ *       with calls to mmap.
  */
 
 #include <stdio.h>
