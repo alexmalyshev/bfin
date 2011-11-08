@@ -3,9 +3,9 @@
  *  @brief A virtual machine for brainfuck.
  *
  *  Memory is implemented as a doubly linked list of chunks, with some
- *  tomfoolery to try to get malloc to give us blocks that are the same size
+ *  tomfoolery to try to get mmap to give us blocks that are the same size
  *  as the system's page size. If the data pointer in the vm goes out of bounds
- *  we simply malloc on a new chunk and link it on the list, whether it be on
+ *  we simply mmap a new chunk and link it into the list, whether it be on
  *  the left or the right. Jumping between brackets is handled using a stack.
  *  When the vm reaches a '[' character, it looks to the right for the matching
  *  ']'. If the byte pointed to by the data pointer is zero, then we jump over
@@ -17,16 +17,15 @@
  *  the top of the jump stack.
  *
  *  @author Alexander Malyshev
- *  @bug This file contains code to try to get malloc to give us pages of memory
- *       instead of just random unaligned memory blocks. This code is hacky and
- *       not guaranteed to work. In the near future, I will replace this code
- *       with calls to mmap.
+ *  @bug No known bugs.
  */
 
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/mman.h>
 
 /** @brief A chunk of memory. */
 typedef struct memchunk_t {
@@ -41,6 +40,8 @@ typedef struct jumpstack_t {
     char *leftbracket;          /**< the address of a left bracket in memory. */
 } jumpstack;
 
+/* function that sets up the vm */
+static void init_bfvm(void);
 /* jumpstack functions */
 static jumpstack *init_jumpstack(void);
 static void destroy_jumpstack(jumpstack *);
@@ -56,7 +57,8 @@ static char *get_prog(FILE *, char *);
 /* executing brainfuck code */
 static char *match_right(char *);
 static void execute(char *);
-
+/* wrapper for mmap */
+static void *alloc_chunk(void);
 
 /** @brief The size of chunks of memory on this system. */
 static long chunklen;
@@ -67,6 +69,8 @@ static memchunk *page;
 /** @brief The data pointer specified by the brainfuck language. */
 static char *data;
 
+/** @brief File descriptor of /dev/zero, used for mmap. */
+static int devzerofd;
 
 /** @brief Runs the brainfuck virtual machine.
  *  @param argc the number of arguments.
@@ -88,40 +92,69 @@ int main(int argc, char *argv[]) {
     char *line;
     FILE *file;
 
-    /* hopefully this -8 will be enough for malloc's extra block data
-       and that malloc will simply hand us the entire page */
-    chunklen = sysconf(_SC_PAGESIZE) - 8;
-    if (chunklen < 0)
-        chunklen += 8;
+    /* set up the vm */
+    init_bfvm();
 
-    page = init_memchunk();
-    data = page->mem + chunklen/2;
+    /* our initial line of text is just our chunk size (plus one for '\0').
+       we'll potentially resize line in get_line and get_prog, but we'll
+       always realloc it back to this original size for memory efficiency. */
     line = malloc(chunklen + 1);
 
+    /* if there was a file specified, attempt to read it in and execute it */
     if (argc == 2) {
         file = fopen(argv[1], "r");
         if (file == NULL)
-            fprintf(stderr, "Error: Could not open %s\n", argv[1]);
+            fprintf(stderr, "IO Error: Could not open %s\n", argv[1]);
         else {
             line = get_prog(file, line);
-
             fclose(file);
-
             execute(line);
-
             line = realloc(line, chunklen);
+            if (line == NULL) {
+                fputs("Memory Allocation Error: \
+                       Failed at resizing internal text buffer, exiting\n",
+                      stderr);
+                exit(1);
+            }
         }
     }
 
+    /* keep on getting lines of code and executing them */
     for (;;) {
         printf("bfvm: ");
         line = get_line(line);
- 
         execute(line);
-
         line = realloc(line, chunklen);
+        if (line == NULL) {
+            fputs("Memory Allocation Error: \
+                   Failed at resizing internal text buffer, exiting\n",
+                  stderr);
+            exit(1);
+        }
     }
     return 0;
+}
+
+/** @brief Initializes the brainfuck virtual machine.
+ *
+ *  Tries to set up memory chunk sizes so that mmap will give us a page
+ *  when we allocate a new memory chunk.
+ */
+static void init_bfvm(void) {
+    /* hopefully this -32 will be enough for mmap's extra block data
+       and that we'll simply be handed an entire page */
+    chunklen = sysconf(_SC_PAGESIZE) - 32;
+
+    /* if our system has a really small pagesize, don't modify it */
+    if (chunklen < 0)
+        chunklen += 32;
+
+    /* open up /dev/zero, we need it for mmap */
+    devzerofd = open("/dev/zero", O_RDWR);
+
+    /* set up our initial page of memory and data pointer */
+    page = init_memchunk();
+    data = page->mem + chunklen/2;
 }
 
 /** @brief Initializes a new jumpstack.
@@ -133,7 +166,8 @@ int main(int argc, char *argv[]) {
 static jumpstack *init_jumpstack(void) {
     jumpstack *stack = calloc(1, sizeof(jumpstack));
     if (stack == NULL) {
-        fputs("Error: calloc failed, exiting\n", stderr);
+        fputs("Memory Allocation Error: \
+               Could not allocate a jumpstack, exiting\n", stderr);
         exit(1);
     }
     return stack;
@@ -185,11 +219,13 @@ static memchunk *init_memchunk(void) {
     memchunk *chunk;
 
     if ((chunk = malloc(sizeof(memchunk))) == NULL) {
-        fputs("Error: malloc failed, exiting\n", stderr);
+        fputs("Memory Allocation Error: \
+               Could not allocate a chunk type, exiting\n", stderr);
         exit(1);
     }
-    if ((chunk->mem = calloc(1, chunklen)) == NULL) {
-        fputs("Error: calloc failed, exiting\n", stderr);
+    if ((chunk->mem = alloc_chunk()) == NULL) {
+        fputs("Memory Allocation Error: \
+               Could not allocate a chunk of memory, exiting\n", stderr);
         exit(1);
     }
     
@@ -240,7 +276,8 @@ static char *get_line(char *start) {
         len += chunklen;
         start = realloc(start, len);
         if (start == NULL) {
-            fputs("Error: Could not read in line\n", stderr);
+            fputs("Memory Allocation Error: \
+                   Could not read in line of text\n", stderr);
             return NULL;
         }
         end += chunklen;
@@ -273,7 +310,8 @@ static char *get_prog(FILE *file, char *start) {
         len += chunklen;
         start = realloc(start, len);
         if (start == NULL) {
-            fputs("Error: Could not read in file\n", stderr);
+            fputs("Memory Allocation Error: \
+                   Could not read in file\n", stderr);
             return NULL;
         }
         end += chunklen;
@@ -365,7 +403,8 @@ static void execute(char *line) {
                 if (*data == 0) {
                     c = right;
                     if (c == NULL) {
-                        fputs("Error: '[' with no matching ']'\n", stderr);
+                        fputs("Input Error: \
+                              '[' with no matching ']'\n", stderr);
                         return;
                     }
                 }
@@ -375,9 +414,9 @@ static void execute(char *line) {
             case ']':
                 if (*data != 0) {
                     if (stack == NULL || stack->leftbracket == NULL) {
-                        fputs("Error: ']' with no matching '['\n", stderr);
+                        fputs("Input Error: \
+                               ']' with no matching '['\n", stderr);
                         return;
-
                     }
                     c = stack->leftbracket;
                 }
@@ -387,4 +426,12 @@ static void execute(char *line) {
         }
     }
     destroy_jumpstack(stack);
+}
+
+/** @brief Allocates a chunk of zeroed-out memory of size chunklen.
+  * @return the address of the newly allocated chunk. */
+static void *alloc_chunk(void) {
+    void *chunk = mmap(NULL, chunklen, PROT_WRITE, MAP_PRIVATE, devzerofd, 0);
+    memset(chunk, 0, chunklen);
+    return chunk;
 }
