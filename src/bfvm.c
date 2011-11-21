@@ -72,6 +72,8 @@ static char *data;
 /** @brief File descriptor of /dev/zero, used for mmap. */
 static int devzerofd;
 
+#define spit(...) fprintf(stderr, __VA_ARGS__)
+
 /** @brief Runs the brainfuck virtual machine.
  *  @param argc the number of arguments.
  *  @param argv the array of arguments.
@@ -104,16 +106,15 @@ int main(int argc, char *argv[]) {
     if (argc == 2) {
         file = fopen(argv[1], "r");
         if (file == NULL)
-            fprintf(stderr, "IO Error: Could not open %s\n", argv[1]);
+            spit("IO Error: Could not open %s\n", argv[1]);
         else {
             line = get_prog(file, line);
             fclose(file);
             execute(line);
             line = realloc(line, chunklen);
             if (line == NULL) {
-                fputs("Memory Allocation Error: \
-                       Failed at resizing internal text buffer, exiting\n",
-                      stderr);
+                spit("Memory Allocation Error: \
+                      Failed at resizing internal text buffer, exiting\n");
                 exit(1);
             }
         }
@@ -126,9 +127,8 @@ int main(int argc, char *argv[]) {
         execute(line);
         line = realloc(line, chunklen);
         if (line == NULL) {
-            fputs("Memory Allocation Error: \
-                   Failed at resizing internal text buffer, exiting\n",
-                  stderr);
+            spit("Memory Allocation Error: \
+                  Failed at resizing internal text buffer, exiting\n");
             exit(1);
         }
     }
@@ -166,8 +166,8 @@ static void init_bfvm(void) {
 static jumpstack *init_jumpstack(void) {
     jumpstack *stack = calloc(1, sizeof(jumpstack));
     if (stack == NULL) {
-        fputs("Memory Allocation Error: \
-               Could not allocate a jumpstack, exiting\n", stderr);
+        spit("Memory Allocation Error: \
+              Could not allocate a jumpstack, exiting\n");
         exit(1);
     }
     return stack;
@@ -219,13 +219,13 @@ static memchunk *init_memchunk(void) {
     memchunk *chunk;
 
     if ((chunk = malloc(sizeof(memchunk))) == NULL) {
-        fputs("Memory Allocation Error: \
-               Could not allocate a chunk type, exiting\n", stderr);
+        spit("Memory Allocation Error: \
+              Could not allocate a chunk type, exiting\n");
         exit(1);
     }
     if ((chunk->mem = alloc_chunk()) == NULL) {
-        fputs("Memory Allocation Error: \
-               Could not allocate a chunk of memory, exiting\n", stderr);
+        spit("Memory Allocation Error: \
+              Could not allocate a chunk of memory, exiting\n");
         exit(1);
     }
     
@@ -276,8 +276,7 @@ static char *get_line(char *start) {
         len += chunklen;
         start = realloc(start, len);
         if (start == NULL) {
-            fputs("Memory Allocation Error: \
-                   Could not read in line of text\n", stderr);
+            spit("Memory Allocation Error: Could not read in line of text\n");
             return NULL;
         }
         end += chunklen;
@@ -310,8 +309,7 @@ static char *get_prog(FILE *file, char *start) {
         len += chunklen;
         start = realloc(start, len);
         if (start == NULL) {
-            fputs("Memory Allocation Error: \
-                   Could not read in file\n", stderr);
+            spit("Memory Allocation Error: Could not read in file\n");
             return NULL;
         }
         end += chunklen;
@@ -392,8 +390,8 @@ static void execute(char *line) {
                 break;
             case ',':
                 /* need to clear out stdin after calling getchar().
-                   otherwise the rest of the line would be passed
-                   as 'line' in main(), and we'd print "bfvm: bfvm: " */
+                 * otherwise the rest of the line would be passed
+                 * as 'line' in main(), and we'd print "bfvm: bfvm: " */
                 *data = getchar();
                 while (*c != '\n')
                     *c = getchar();
@@ -403,8 +401,7 @@ static void execute(char *line) {
                 if (*data == 0) {
                     c = right;
                     if (c == NULL) {
-                        fputs("Input Error: \
-                              '[' with no matching ']'\n", stderr);
+                        spit("Input Error: '[' with no matching ']'\n");
                         return;
                     }
                 }
@@ -414,8 +411,7 @@ static void execute(char *line) {
             case ']':
                 if (*data != 0) {
                     if (stack == NULL || stack->leftbracket == NULL) {
-                        fputs("Input Error: \
-                               ']' with no matching '['\n", stderr);
+                        spit("Input Error: ']' with no matching '['\n");
                         return;
                     }
                     c = stack->leftbracket;
