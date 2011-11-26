@@ -113,8 +113,8 @@ int main(int argc, char *argv[]) {
             execute(line);
             line = realloc(line, chunklen);
             if (line == NULL) {
-                spit("Memory Allocation Error: \
-                      Failed at resizing internal text buffer, exiting\n");
+                spit("Memory Allocation Error: "
+                     "Failed at resizing internal text buffer, exiting\n");
                 exit(1);
             }
         }
@@ -127,8 +127,8 @@ int main(int argc, char *argv[]) {
         execute(line);
         line = realloc(line, chunklen);
         if (line == NULL) {
-            spit("Memory Allocation Error: \
-                  Failed at resizing internal text buffer, exiting\n");
+            spit("Memory Allocation Error: "
+                 "Failed at resizing internal text buffer, exiting\n");
             exit(1);
         }
     }
@@ -166,8 +166,8 @@ static void init_bfvm(void) {
 static jumpstack *init_jumpstack(void) {
     jumpstack *stack = calloc(1, sizeof(jumpstack));
     if (stack == NULL) {
-        spit("Memory Allocation Error: \
-              Could not allocate a jumpstack, exiting\n");
+        spit("Memory Allocation Error: "
+             "Could not allocate a jumpstack, exiting\n");
         exit(1);
     }
     return stack;
@@ -219,13 +219,13 @@ static memchunk *init_memchunk(void) {
     memchunk *chunk;
 
     if ((chunk = malloc(sizeof(memchunk))) == NULL) {
-        spit("Memory Allocation Error: \
-              Could not allocate a chunk type, exiting\n");
+        spit("Memory Allocation Error: "
+             "Could not allocate a chunk type, exiting\n");
         exit(1);
     }
     if ((chunk->mem = alloc_chunk()) == NULL) {
-        spit("Memory Allocation Error: \
-              Could not allocate a chunk of memory, exiting\n");
+        spit("Memory Allocation Error: "
+             "Could not allocate a chunk of memory, exiting\n");
         exit(1);
     }
     
