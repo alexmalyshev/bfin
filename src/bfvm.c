@@ -98,8 +98,8 @@ int main(int argc, char *argv[]) {
     init_bfvm();
 
     /* our initial line of text is just our chunk size (plus one for '\0').
-       we'll potentially resize line in get_line and get_prog, but we'll
-       always realloc it back to this original size for memory efficiency. */
+     * we'll potentially resize line in get_line and get_prog, but we'll
+     * always realloc it back to this original size for memory efficiency. */
     line = malloc(chunklen + 1);
 
     /* if there was a file specified, attempt to read it in and execute it */
