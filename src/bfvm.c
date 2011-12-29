@@ -2,22 +2,19 @@
  *  @mainpage
  *  @brief A virtual machine for brainfuck.
  *
- *  Memory is implemented as a doubly linked list of chunks, with some
- *  tomfoolery to try to get mmap to give us blocks that are the same size
- *  as the system's page size. If the data pointer in the vm goes out of bounds
- *  we simply mmap a new chunk and link it into the list, whether it be on
- *  the left or the right. Jumping between brackets is handled using a stack.
- *  When the vm reaches a '[' character, it looks to the right for the matching
- *  ']'. If the byte pointed to by the data pointer is zero, then we jump over
- *  to the right bracket and continue on from there. If it isn't zero, then we
- *  push the address of the left bracket onto a stack. When we get to the
- *  corresponding right bracket, if the byte pointed to by data is nonzero,
- *  then we jump back to the address at the top of the stack, it will be the
- *  address of the matching left bracket. If the byte is zero, then we pop off
- *  the top of the jump stack.
+ *  Memory is implemented as a doubly linked list of chunks. If the data
+ *  pointer in the vm goes out of bounds we simply malloc a new chunk and link
+ *  it into the list, whether it be on the left or the right. Jumping between
+ *  brackets is handled using a stack. When the vm reaches a '[' character, it
+ *  looks to the right for the matching ']'. If the byte pointed to by the data
+ *  pointer is zero, then we jump over to the right bracket and continue on
+ *  from there. If it isn't zero, then we push the address of the left bracket
+ *  onto a stack. When we get to the corresponding right bracket, if the byte
+ *  pointed to by data is nonzero, then we jump back to the address at the top
+ *  of the stack, it will be the address of the matching left bracket. If the
+ *  byte is zero, then we pop off the top of the jump stack.
  *
  *  @author Alexander Malyshev
- *  @bug No known bugs.
  */
 
 #include <fcntl.h>
@@ -57,8 +54,6 @@ static char *get_prog(FILE *, char *);
 /* executing brainfuck code */
 static char *match_right(char *);
 static void execute(char *);
-/* wrapper for mmap */
-static void *alloc_chunk(void);
 
 /** @brief The size of chunks of memory on this system. */
 static long chunklen;
@@ -68,9 +63,6 @@ static memchunk *page;
 
 /** @brief The data pointer specified by the brainfuck language. */
 static char *data;
-
-/** @brief File descriptor of /dev/zero, used for mmap. */
-static int devzerofd;
 
 #define spit(...) fprintf(stderr, __VA_ARGS__)
 
@@ -135,22 +127,15 @@ int main(int argc, char *argv[]) {
     return 0;
 }
 
-/** @brief Initializes the brainfuck virtual machine.
- *
- *  Tries to set up memory chunk sizes so that mmap will give us a page
- *  when we allocate a new memory chunk.
- */
+/** @brief Initializes the brainfuck virtual machine. */
 static void init_bfvm(void) {
     /* hopefully this -32 will be enough for mmap's extra block data
-       and that we'll simply be handed an entire page */
+     * and that we'll simply be handed a single page */
     chunklen = sysconf(_SC_PAGESIZE) - 32;
 
     /* if our system has a really small pagesize, don't modify it */
     if (chunklen < 0)
         chunklen += 32;
-
-    /* open up /dev/zero, we need it for mmap */
-    devzerofd = open("/dev/zero", O_RDWR);
 
     /* set up our initial page of memory and data pointer */
     page = init_memchunk();
@@ -175,7 +160,6 @@ static jumpstack *init_jumpstack(void) {
 
 /** @brief Frees all the jumpstacks associated with stack.
  *  @param stack the jumpstack we want to deallocate.
- *  @return Void.
  */
 static void destroy_jumpstack(jumpstack *stack) {
     jumpstack *dead;
@@ -223,7 +207,7 @@ static memchunk *init_memchunk(void) {
              "Could not allocate a chunk type, exiting\n");
         exit(1);
     }
-    if ((chunk->mem = alloc_chunk()) == NULL) {
+    if ((chunk->mem = malloc(chunklen)) == NULL) {
         spit("Memory Allocation Error: "
              "Could not allocate a chunk of memory, exiting\n");
         exit(1);
@@ -347,7 +331,6 @@ static char *match_right(char *line) {
  *  a bracket that wants us to jump but there is no matching bracket.
  *
  *  @param line the brainfuck code we want to execute.
- *  @return Void.
  */
 static void execute(char *line) {
     char *c;
@@ -422,12 +405,4 @@ static void execute(char *line) {
         }
     }
     destroy_jumpstack(stack);
-}
-
-/** @brief Allocates a chunk of zeroed-out memory of size chunklen.
-  * @return the address of the newly allocated chunk. */
-static void *alloc_chunk(void) {
-    void *chunk = mmap(NULL, chunklen, PROT_WRITE, MAP_PRIVATE, devzerofd, 0);
-    memset(chunk, 0, chunklen);
-    return chunk;
 }
