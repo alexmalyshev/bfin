@@ -1,6 +1,6 @@
-/** @file bfvm.c
+/** @file bfin.c
  *  @mainpage
- *  @brief A virtual machine for brainfuck.
+ *  @brief An interpreter for brainfuck.
  *
  *  Memory is implemented as a doubly linked list of chunks. If the data
  *  pointer in the vm goes out of bounds we simply malloc a new chunk and link
@@ -37,8 +37,8 @@ typedef struct jumpstack_t {
     char *leftbracket;          /**< the address of a left bracket in memory. */
 } jumpstack;
 
-/* function that sets up the vm */
-static void init_bfvm(void);
+/* function that sets up the interpreter */
+static void init_bfin(void);
 /* jumpstack functions */
 static jumpstack *init_jumpstack(void);
 static void destroy_jumpstack(jumpstack *);
@@ -66,19 +66,19 @@ static char *data;
 
 #define spit(...) fprintf(stderr, __VA_ARGS__)
 
-/** @brief Runs the brainfuck virtual machine.
+/** @brief Runs the brainfuck interpreter.
  *  @param argc the number of arguments.
  *  @param argv the array of arguments.
  *  @return Success status.
  */
 int main(int argc, char *argv[]) {
     /*
-     * Usage: bfvm
-     *        Sets up the vm and starts the interpreter. Every line passed to
-     *        the interpreter must be a valid brainfuck program, not just part
+     * Usage: bfin
+     *        Sets up and starts the interpreter. Every line passed to the
+     *        interpreter must be a valid brainfuck program, not just part
      *        of one.
      * 
-     *        bfvm <filename>
+     *        bfin <filename>
      *        Reads in the input file and executes it, then starts the
      *        interpreter.
      */
@@ -86,8 +86,8 @@ int main(int argc, char *argv[]) {
     char *line;
     FILE *file;
 
-    /* set up the vm */
-    init_bfvm();
+    /* set up the interpreter */
+    init_bfin();
 
     /* our initial line of text is just our chunk size (plus one for '\0').
      * we'll potentially resize line in get_line and get_prog, but we'll
@@ -127,8 +127,8 @@ int main(int argc, char *argv[]) {
     return 0;
 }
 
-/** @brief Initializes the brainfuck virtual machine. */
-static void init_bfvm(void) {
+/** @brief Initializes the brainfuck interpreter. */
+static void init_bfin(void) {
     /* hopefully this -32 will be enough for mmap's extra block data
      * and that we'll simply be handed a single page */
     chunklen = sysconf(_SC_PAGESIZE) - 32;
@@ -219,8 +219,8 @@ static memchunk *init_memchunk(void) {
 }
 
 /** @brief Adds on more memory to the left of chunk.
- *  @param chunk the address of the current memchunk the vm is using.
- *  @return The address of the new memchunk the vm will be using.
+ *  @param chunk the address of the current memchunk the interpreter is using.
+ *  @return The address of the new memchunk the interpreter will be using.
  */
 static memchunk *overflow_left(memchunk *chunk) {
     memchunk *new = init_memchunk();
@@ -230,8 +230,8 @@ static memchunk *overflow_left(memchunk *chunk) {
 }
 
 /** @brief Adds on more memory to the right of chunk.
- *  @param chunk the address of the current memchunk the vm is using.
- *  @return The address of the new memchunk the vm will be using.
+ *  @param chunk the address of the current memchunk the interpreter is using.
+ *  @return The address of the new memchunk the interpreter will be using.
  */
 static memchunk *overflow_right(memchunk *chunk) {
     memchunk *new = init_memchunk();
@@ -374,7 +374,7 @@ static void execute(char *line) {
             case ',':
                 /* need to clear out stdin after calling getchar().
                  * otherwise the rest of the line would be passed
-                 * as 'line' in main(), and we'd print "bfvm: bfvm: " */
+                 * as 'line' in main(), and we'd print "bfin: bfin: " */
                 *data = getchar();
                 while (*c != '\n')
                     *c = getchar();
