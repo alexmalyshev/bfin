@@ -3,10 +3,10 @@
  *  @brief An interpreter for brainfuck.
  *
  *  Memory is implemented as a doubly linked list of chunks. If the data
- *  pointer in the vm goes out of bounds we simply malloc a new chunk and link
- *  it into the list, whether it be on the left or the right. Jumping between
- *  brackets is handled using a stack. When the vm reaches a '[' character, it
- *  looks to the right for the matching ']'. If the byte pointed to by the data
+ *  pointer goes out of bounds we simply malloc a new chunk and link it into
+ *  the list, whether it be on the left or the right. Jumping between brackets
+ *  is handled using a stack. When the interpreter reaches a '[' character, it
+ *  looks ahead for the matching ']'. If the byte pointed to by the data
  *  pointer is zero, then we jump over to the right bracket and continue on
  *  from there. If it isn't zero, then we push the address of the left bracket
  *  onto a stack. When we get to the corresponding right bracket, if the byte
@@ -75,8 +75,8 @@ int main(int argc, char *argv[]) {
     /*
      * Usage: bfin
      *        Sets up and starts the interpreter. Every line passed to the
-     *        interpreter must be a valid brainfuck program, not just part
-     *        of one.
+     *        interpreter must be a valid brainfuck program, not just part of
+     *        one.
      * 
      *        bfin <filename>
      *        Reads in the input file and executes it, then starts the
@@ -114,7 +114,7 @@ int main(int argc, char *argv[]) {
 
     /* keep on getting lines of code and executing them */
     for (;;) {
-        printf("bfvm: ");
+        printf("bfin: ");
         line = get_line(line);
         execute(line);
         line = realloc(line, chunklen);
