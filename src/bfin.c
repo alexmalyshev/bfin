@@ -17,25 +17,30 @@
  *  @author Alexander Malyshev
  */
 
+#include <assert.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+
 #include <sys/mman.h>
 
-/** @brief A chunk of memory. */
+
+/** @brief A chunk of memory */
 typedef struct memchunk_t {
-    struct memchunk_t *next;    /**< the next chunk of memory. */
-    struct memchunk_t *prev;    /**< the previous chunk of memory. */
-    char *mem;                  /**< the block of bytes used as memory. */
+    struct memchunk_t *next;    /**< the next chunk of memory */
+    struct memchunk_t *prev;    /**< the previous chunk of memory */
+    char *mem;                  /**< the block of bytes used as memory */
 } memchunk;
 
-/** @brief The stack used for jumping back to left brackets. */
+
+/** @brief The stack used for jumping back to left brackets */
 typedef struct jumpstack_t {
-    struct jumpstack_t *next;   /**< the next stack. */
-    char *leftbracket;          /**< the address of a left bracket in memory. */
+    struct jumpstack_t *next;   /**< the next stack */
+    char *leftbracket;          /**< the address of a left bracket in memory */
 } jumpstack;
+
 
 /* function that sets up the interpreter */
 static void init_bfin(void);
@@ -55,16 +60,15 @@ static char *get_prog(FILE *, char *);
 static char *match_right(char *);
 static void execute(char *);
 
-/** @brief The size of chunks of memory on this system. */
+/** @brief The size of chunks of memory on this system */
 static long chunklen;
 
-/** @brief The current chunk/page of memory we are on. */
+/** @brief The current chunk/page of memory we are on */
 static memchunk *page;
 
-/** @brief The data pointer specified by the brainfuck language. */
+/** @brief The data pointer specified by the brainfuck language */
 static char *data;
 
-#define spit(...) fprintf(stderr, __VA_ARGS__)
 
 /** @brief Runs the brainfuck interpreter.
  *  @param argc the number of arguments.
@@ -98,15 +102,15 @@ int main(int argc, char *argv[]) {
     if (argc == 2) {
         file = fopen(argv[1], "r");
         if (file == NULL)
-            spit("IO Error: Could not open %s\n", argv[1]);
+            fprintf(stderr, "IO Error: Could not open '%s'\n", argv[1]);
         else {
             line = get_prog(file, line);
             fclose(file);
             execute(line);
             line = realloc(line, chunklen);
             if (line == NULL) {
-                spit("Memory Allocation Error: "
-                     "Failed at resizing internal text buffer, exiting\n");
+                fprintf(stderr, "Memory Allocation Error: Failed at resizing "
+                                "internal text buffer, exiting\n");
                 exit(1);
             }
         }
@@ -119,17 +123,18 @@ int main(int argc, char *argv[]) {
         execute(line);
         line = realloc(line, chunklen);
         if (line == NULL) {
-            spit("Memory Allocation Error: "
-                 "Failed at resizing internal text buffer, exiting\n");
+            fprintf(stderr, "Memory Allocation Error: Failed at resizing "
+                    "internal text buffer, exiting\n");
             exit(1);
         }
     }
     return 0;
 }
 
-/** @brief Initializes the brainfuck interpreter. */
+
+/** @brief Initializes the brainfuck interpreter */
 static void init_bfin(void) {
-    /* hopefully this -32 will be enough for mmap's extra block data
+    /* hopefully this -32 will be enough for malloc's extra block data
      * and that we'll simply be handed a single page */
     chunklen = sysconf(_SC_PAGESIZE) - 32;
 
@@ -137,29 +142,39 @@ static void init_bfin(void) {
     if (chunklen < 0)
         chunklen += 32;
 
-    /* set up our initial page of memory and data pointer */
+    /* set up our initial page of memory */
     page = init_memchunk();
+
+    /* set the data pointer in the middle of the memory chunk. that way we
+     * won't overflow left immediately should the program decide to move left
+     * from the very beginning */
     data = page->mem + chunklen/2;
 }
 
-/** @brief Initializes a new jumpstack.
+
+/** @brief Initializes a new jumpstack
  *
- *  Will exit with an error if call to calloc fails.
+ *  Will exit with an error if call to calloc fails
  *
- *  @return The address of a new jumpstack.
+ *  @return The address of a new jumpstack
  */
 static jumpstack *init_jumpstack(void) {
     jumpstack *stack = calloc(1, sizeof(jumpstack));
     if (stack == NULL) {
-        spit("Memory Allocation Error: "
-             "Could not allocate a jumpstack, exiting\n");
+        fprintf(stderr, "Memory Allocation Error: Could not allocate a "
+                        "jumpstack, exiting\n");
         exit(1);
     }
+
     return stack;
 }
 
-/** @brief Frees all the jumpstacks associated with stack.
- *  @param stack the jumpstack we want to deallocate.
+
+/** @brief Frees all the jumpstacks associated with 'stack'
+ *
+ *  'stack' may be NULL, in which case this function will do nothing
+ *
+ *  @param stack the jumpstack we want to deallocate
  */
 static void destroy_jumpstack(jumpstack *stack) {
     jumpstack *dead;
@@ -171,147 +186,225 @@ static void destroy_jumpstack(jumpstack *stack) {
     }
 }
 
-/** @brief Pushes the address of a left bracket onto stack.
- *  @param stack The address of the jumpstack we want to push leftbracket on.
- *  @param leftbracket The address of the left bracket we want to store.
- *  @return The resulting jumpstack from pushing leftbracket onto stack.
+
+/** @brief Pushes the address of a left bracket onto 'stack'
+ *
+ *  'stack' may be NULL
+ *
+ *  @param stack The address of the jumpstack we want to push leftbracket on
+ *  @param leftbracket The address of the left bracket we want to store
+ *
+ *  @return The resulting jumpstack from pushing leftbracket onto stack
  */
 static jumpstack *push_jump(jumpstack *stack, char *leftbracket) {
-    jumpstack *new = init_jumpstack();
+    jumpstack *new;
+
+    assert(leftbracket != NULL);
+
+    new = init_jumpstack();
     new->leftbracket = leftbracket;
     new->next = stack;
     return new;
 }
 
-/** @brief Pops the top address off of stack.
- *  @param stack The address of the jumpstack we want to pop the top off of.
- *  @return The resulting jumpstack after popping the top off of stack.
+
+/** @brief Pops the top address off of stack
+ *
+ *  @param stack The address of the jumpstack we want to pop the top off of
+ *
+ *  @return The resulting jumpstack after popping the top off of stack
  */
 static jumpstack *pop_jump(jumpstack *stack) {
-    jumpstack *new = stack->next;
+    jumpstack *new;
+
+    assert(stack != NULL);
+
+    new = stack->next;
+
     free(stack);
+
     return new;
 }
 
-/** @brief Allocates and initializes a new chunk of memory.
+
+/** @brief Allocates and initializes a new chunk of memory
  *
- *  Will exit with an error if call to calloc or call to malloc fail.
+ *  Will exit with an error if call to calloc or call to malloc fail
  *
- *  @return The address of a new memchunk.
+ *  @return The address of a new memchunk
  */
 static memchunk *init_memchunk(void) {
     memchunk *chunk;
 
     if ((chunk = malloc(sizeof(memchunk))) == NULL) {
-        spit("Memory Allocation Error: "
-             "Could not allocate a chunk type, exiting\n");
+        fprintf(stderr, "Memory Allocation Error: Could not allocate a chunk "
+                        "type, exiting\n");
         exit(1);
     }
     if ((chunk->mem = malloc(chunklen)) == NULL) {
-        spit("Memory Allocation Error: "
-             "Could not allocate a chunk of memory, exiting\n");
+        fprintf(stderr, "Memory Allocation Error: Could not allocate a chunk "
+                        "of memory, exiting\n");
         exit(1);
     }
     
     chunk->prev = NULL;
     chunk->next = NULL;
+
     return chunk;
 }
 
-/** @brief Adds on more memory to the left of chunk.
- *  @param chunk the address of the current memchunk the interpreter is using.
- *  @return The address of the new memchunk the interpreter will be using.
+
+/** @brief Adds on more memory to the left of chunk
+ *
+ *  @param chunk the address of the current memchunk the interpreter is using
+ *
+ *  @return The address of the new memchunk the interpreter will be using
  */
 static memchunk *overflow_left(memchunk *chunk) {
-    memchunk *new = init_memchunk();
+    memchunk *new;
+
+    assert(chunk != NULL);
+
+    /* the left of the chunk is supposed to be empty */
+    assert(chunk->prev == NULL);
+
+    new = init_memchunk();
     chunk->prev = new;
     new->next = chunk;
+
     return new;
 }
 
-/** @brief Adds on more memory to the right of chunk.
- *  @param chunk the address of the current memchunk the interpreter is using.
- *  @return The address of the new memchunk the interpreter will be using.
+
+/** @brief Adds on more memory to the right of chunk
+ *
+ *  @param chunk the address of the current memchunk the interpreter is using
+ *
+ *  @return The address of the new memchunk the interpreter will be using
  */
 static memchunk *overflow_right(memchunk *chunk) {
-    memchunk *new = init_memchunk();
+    memchunk *new;
+
+    assert(chunk != NULL);
+
+    /* the right of the chunk is supposed to be empty */
+    assert(chunk->next == NULL);
+
+    new = init_memchunk();
+
     chunk->next = new;
+
     new->prev = chunk;
+
     return new;
 }
 
-/** @brief Gets a single line of input from the terminal.
+
+/** @brief Gets a single line of input from the terminal
  *
  *  Will call realloc to dynamically resize a string to get all the input.
- *  Will exit with an error if call to realloc fails. start is a char buffer
- *  with length at least chunklen + 1.
+ *  Will exit with an error if call to realloc fails. 'start' is a char buffer
+ *  with length at least 'chunklen + 1'
  *
- *  @param start the buffer we want to use to copy the line of text into.
- *  @return The line of text read in from the terminal.
+ *  @param start the buffer we want to use to copy the line of text into
+ *
+ *  @return The line of text read in from the terminal
  */
 static char *get_line(char *start) {
     char *end = start;
     size_t len = chunklen;
 
-    for (;;) {
+    assert(start != NULL);
+
+    /* keep reading until a newline is reached */
+    while (1) {
+        /* read in a chunk's worth of text */
         fgets(end, chunklen, stdin);
+
+        /* stop if a newline is found in what we just read in */
         if (strchr(end, '\n'))
             break;
+
+        /* otherwise allocate space for the next chunk to be read in */
         len += chunklen;
         start = realloc(start, len);
         if (start == NULL) {
-            spit("Memory Allocation Error: Could not read in line of text\n");
+            fprintf(stderr, "Memory Allocation Error: Could not read in line "
+                            "of text\n");
             return NULL;
         }
+
+        /* and update the where to write the chunk to */
         end += chunklen;
     }
+
     return start;
 }
 
-/** @brief Reads all the text from file into a char buffer.
+
+/** @brief Reads all the text from file into a char buffer
  *
  *  Will call realloc to dynamically resize a string to get all the input.
  *  Will exit with an error if call to realloc fails. start is a char buffer
- *  with length at least chunklen + 1.
+ *  with length at least 'chunklen + 1'
  *
- *  @param file the file we want to read input from.
- *  @param start the buffer we want to use to copy the file text into.
- *  @return The text read in from file.
+ *  @param file the file we want to read input from
+ *  @param start the buffer we want to use to copy the file text into
+ *
+ *  @return The text read in from file
  */
 static char *get_prog(FILE *file, char *start) {
     char *end = start;
     size_t len = chunklen;
     size_t read;
 
-    for (;;) {
+    assert(file != NULL);
+    assert(start != NULL);
+
+    /* read in the entire file */
+    while (1) {
+        /* read in a chunk's worth of text */
         read = fread(end, 1, chunklen, file);
 
+        /* stop if everything has been read out from the file */
         if (feof(file)) {
             end[read] = '\0';
             break;
         }
+
+        /* otherwise allocate space for the next chunk to be read in */
         len += chunklen;
         start = realloc(start, len);
         if (start == NULL) {
-            spit("Memory Allocation Error: Could not read in file\n");
+            fprintf(stderr, "Memory Allocation Error: Could not read in entire "
+                            "file\n");
             return NULL;
         }
+
+        /* and update the where to write the chunk to */
         end += chunklen;
     }
+
     return start;
 }
 
-/** @brief Finds the next valid right bracket.
+
+/** @brief Finds the next valid right bracket
  *
  *  *line is a left bracket. search to the right to find the next unmatched
- *  right bracket.
+ *  right bracket
  *
- *  @param line the string in which we want to find a matching right bracket.
- *  @return the address of the right bracket if it exists, NULL otherwise.
+ *  @param line the string in which we want to find a matching right bracket
+ *
+ *  @return the address of the right bracket if it exists, NULL otherwise
  */
 static char *match_right(char *line) {
     char *c;
     int count = 0;
+
+    assert(line != NULL);
+    assert(line[0] == '[');
+
     for (c = line + 1; *c != '\0'; ++c) {
         if (*c == '[')
             ++count;
@@ -322,24 +415,32 @@ static char *match_right(char *line) {
                 return c;
         }
     }
-    return 0;
+
+    return NULL;
 }
 
-/** @brief Executes a line of brainfuck code.
+
+/** @brief Executes a line of brainfuck code
  *
- *  line must be a valid brainfuck program. exits with error if there is
- *  a bracket that wants us to jump but there is no matching bracket.
+ *  line must be a valid brainfuck program. Exits with error if there is
+ *  a bracket that wants us to jump but there is no matching bracket
  *
- *  @param line the brainfuck code we want to execute.
+ *  @param line the brainfuck code we want to execute
  */
 static void execute(char *line) {
     char *c;
     char *right;
     jumpstack *stack = NULL;
 
+    /* need to have already initialized our memory and data pointer */
+    assert(page != NULL);
+    assert(data != NULL);
+
+    /* already reported the error elsewhere, no need to print something here */
     if (line == NULL)
         return;
 
+    /* loop through all characters in the program */
     for (c = line; *c != '\0'; ++c) {
         switch (*c) {
             case '>':
@@ -384,7 +485,8 @@ static void execute(char *line) {
                 if (*data == 0) {
                     c = right;
                     if (c == NULL) {
-                        spit("Input Error: '[' with no matching ']'\n");
+                        fprintf(stderr, "Input Error: "
+                                        "'[' with no matching ']'\n");
                         return;
                     }
                 }
@@ -394,7 +496,8 @@ static void execute(char *line) {
             case ']':
                 if (*data != 0) {
                     if (stack == NULL || stack->leftbracket == NULL) {
-                        spit("Input Error: ']' with no matching '['\n");
+                        fprintf(stderr, "Input Error: "
+                                        "']' with no matching '['\n");
                         return;
                     }
                     c = stack->leftbracket;
@@ -404,5 +507,6 @@ static void execute(char *line) {
                 break;
         }
     }
+
     destroy_jumpstack(stack);
 }
