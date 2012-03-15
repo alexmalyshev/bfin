@@ -1,4 +1,4 @@
-A simple implementation (one ~13K .c file) of a brainfuck interpreter.
+A simple implementation (one .c file) of a brainfuck interpreter.
 
 If no filename argument is given then the program will simply run as a
 brainfuck interpreter, otherwise the program will execute the file first and
