@@ -117,7 +117,7 @@ int main(int argc, char *argv[]) {
     }
 
     /* keep on getting lines of code and executing them */
-    for (;;) {
+    while (1) {
         printf("bfin: ");
         line = get_line(line);
         execute(line);
