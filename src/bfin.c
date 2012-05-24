@@ -473,12 +473,7 @@ static void execute(char *line) {
                 putchar(*data);
                 break;
             case ',':
-                /* need to clear out stdin after calling getchar().
-                 * otherwise the rest of the line would be passed
-                 * as 'line' in main(), and we'd print "bfin: bfin: " */
                 *data = getchar();
-                while (*c != '\n')
-                    *c = getchar();
                 break;
             case '[':
                 right = match_right(c);
