@@ -46,12 +46,12 @@ typedef struct jumpstack_t {
 /* function that sets up the interpreter */
 static void init_bfin(void);
 /* jumpstack functions */
-static jumpstack *init_jumpstack(void);
+static jumpstack *alloc_jumpstack(void);
 static void destroy_jumpstack(jumpstack *stack);
 static jumpstack *push_jump(jumpstack *stack, char *leftbracket);
 static jumpstack *pop_jump(jumpstack *stack);
 /* memchunk functions */
-static memchunk *init_memchunk(void);
+static memchunk *alloc_memchunk(void);
 static memchunk *overflow_left(memchunk *chunk);
 static memchunk *overflow_right(memchunk *chunk);
 /* reading input */
@@ -73,21 +73,20 @@ static char *data;
 
 
 /**
- * @brief Runs the brainfuck interpreter.
- * @param argc the number of arguments.
- * @param argv the array of arguments.
- * @return Success status.
+ * @brief Runs the brainfuck interpreter
+ *
+ * @param argc the number of arguments
+ * @param argv the array of arguments
+ *
+ * @return Success status
  */
 int main(int argc, char *argv[]) {
     /*
-     * Usage: bfin
+     * Usage: bfin [filename]
      *        Sets up and starts the interpreter. Every line passed to the
      *        interpreter must be a valid brainfuck program, not just part of
-     *        one.
-     * 
-     *        bfin <filename>
-     *        Reads in the input file and executes it, then starts the
-     *        interpreter.
+     *        one. If an input file is specified, then the interpreter will
+     *        first open that file and attempt to execute it.
      */
 
     char *line;
@@ -129,6 +128,11 @@ int main(int argc, char *argv[]) {
         printf("bfin: ");
         line = get_line(line);
         execute(line);
+
+        /* clear out the line we just read in (attempt to handle EOF nicely) */
+        line[0] = '\0';
+
+        /* truncate 'line' back down to a page and reuse it */
         line = realloc(line, chunklen);
         if (line == NULL) {
             fprintf(stderr, "Memory Allocation Error: Failed at resizing "
@@ -136,6 +140,7 @@ int main(int argc, char *argv[]) {
             exit(1);
         }
     }
+
     return 0;
 }
 
@@ -151,7 +156,7 @@ static void init_bfin(void) {
         chunklen += 32;
 
     /* set up our initial page of memory */
-    page = init_memchunk();
+    page = alloc_memchunk();
 
     /* set the data pointer in the middle of the memory chunk. that way we
      * won't overflow left immediately should the program decide to move left
@@ -161,13 +166,13 @@ static void init_bfin(void) {
 
 
 /**
- * @brief Initializes a new jumpstack
+ * @brief Allocates and initializes a new jumpstack
  *
  * Will exit with an error if call to calloc fails
  *
  * @return The address of a new jumpstack
  */
-static jumpstack *init_jumpstack(void) {
+static jumpstack *alloc_jumpstack(void) {
     jumpstack *stack = calloc(1, sizeof(jumpstack));
     if (stack == NULL) {
         fprintf(stderr, "Memory Allocation Error: Could not allocate a "
@@ -212,7 +217,7 @@ static jumpstack *push_jump(jumpstack *stack, char *leftbracket) {
 
     assert(leftbracket != NULL);
 
-    new = init_jumpstack();
+    new = alloc_jumpstack();
     new->leftbracket = leftbracket;
     new->next = stack;
     return new;
@@ -246,7 +251,7 @@ static jumpstack *pop_jump(jumpstack *stack) {
  *
  * @return The address of a new memchunk
  */
-static memchunk *init_memchunk(void) {
+static memchunk *alloc_memchunk(void) {
     memchunk *chunk;
 
     if ((chunk = malloc(sizeof(memchunk))) == NULL) {
@@ -282,7 +287,7 @@ static memchunk *overflow_left(memchunk *chunk) {
     /* the left of the chunk is supposed to be empty */
     assert(chunk->prev == NULL);
 
-    new = init_memchunk();
+    new = alloc_memchunk();
     chunk->prev = new;
     new->next = chunk;
 
@@ -305,7 +310,7 @@ static memchunk *overflow_right(memchunk *chunk) {
     /* the right of the chunk is supposed to be empty */
     assert(chunk->next == NULL);
 
-    new = init_memchunk();
+    new = alloc_memchunk();
 
     chunk->next = new;
 
@@ -329,6 +334,7 @@ static memchunk *overflow_right(memchunk *chunk) {
 static char *get_line(char *start) {
     char *end = start;
     size_t len = chunklen;
+    char *temp;
 
     assert(start != NULL);
 
@@ -337,21 +343,33 @@ static char *get_line(char *start) {
         /* read in a chunk's worth of text */
         fgets(end, chunklen, stdin);
 
+        /* check for io errors */
+        if (ferror(stdin)) {
+            fprintf(stderr, "Input Error: Could not read in line of text\n");
+            return NULL;
+        }
+
         /* stop if a newline is found in what we just read in */
-        if (strchr(end, '\n'))
+        temp = strchr(end, '\n');
+        if (temp != NULL) {
+            /* clear out the newline */
+            *temp = '\0';
             break;
+        }
 
         /* otherwise allocate space for the next chunk to be read in */
         len += chunklen;
-        start = realloc(start, len);
-        if (start == NULL) {
+        temp = realloc(start, len);
+        if (temp == NULL) {
+            free(start);
             fprintf(stderr, "Memory Allocation Error: Could not read in line "
                             "of text\n");
             return NULL;
         }
+        start = temp;
 
         /* and update the where to write the chunk to */
-        end += chunklen;
+        end = start + len - chunklen - 1;
     }
 
     return start;
@@ -373,6 +391,7 @@ static char *get_line(char *start) {
 static char *get_prog(FILE *file, char *start) {
     char *end = start;
     size_t len = chunklen + 1;
+    char *temp;
 
     assert(file != NULL);
     assert(start != NULL);
@@ -394,12 +413,14 @@ static char *get_prog(FILE *file, char *start) {
 
         /* otherwise allocate space for the next chunk to be read in */
         len += chunklen;
-        start = realloc(start, len);
+        temp = realloc(start, len);
         if (start == NULL) {
+            free(start);
             fprintf(stderr, "Memory Allocation Error: Could not read in entire "
                             "file\n");
             return NULL;
         }
+        start = temp;
 
         /* and update the place where to write the chunk to */
         end = start + len - chunklen - 1;
