@@ -109,7 +109,7 @@ int main(int argc, char *argv[]) {
     if (argc == 2) {
         file = fopen(argv[1], "r");
         if (file == NULL)
-            fprintf(stderr, "IO Error: Could not open '%s'\n", argv[1]);
+            fprintf(stderr, "File IO Error: Could not open '%s'\n", argv[1]);
         else {
             line = get_prog(file, line);
             fclose(file);
@@ -192,10 +192,8 @@ static jumpstack *alloc_jumpstack(void) {
  * @param stack the jumpstack we want to deallocate
  */
 static void destroy_jumpstack(jumpstack *stack) {
-    jumpstack *dead;
-    
     while (stack != NULL) {
-        dead = stack;
+        jumpstack *dead = stack;
         stack = stack->next;
         free(dead);
     }
