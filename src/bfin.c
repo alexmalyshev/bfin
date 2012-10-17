@@ -1,20 +1,21 @@
-/** @file bfin.c
- *  @mainpage
- *  @brief An interpreter for brainfuck.
+/**
+ * @file bfin.c
+ * @mainpage
+ * @brief An interpreter for brainfuck.
  *
- *  Memory is implemented as a doubly linked list of chunks. If the data
- *  pointer goes out of bounds we simply malloc a new chunk and link it into
- *  the list, whether it be on the left or the right. Jumping between brackets
- *  is handled using a stack. When the interpreter reaches a '[' character, it
- *  looks ahead for the matching ']'. If the byte pointed to by the data
- *  pointer is zero, then we jump over to the right bracket and continue on
- *  from there. If it isn't zero, then we push the address of the left bracket
- *  onto a stack. When we get to the corresponding right bracket, if the byte
- *  pointed to by data is nonzero, then we jump back to the address at the top
- *  of the stack, it will be the address of the matching left bracket. If the
- *  byte is zero, then we pop off the top of the jump stack.
+ * Memory is implemented as a doubly linked list of chunks. If the data pointer
+ * goes out of bounds we simply malloc a new chunk and link it into the list,
+ * whether it be on the left or the right. Jumping between brackets is handled
+ * using a stack. When the interpreter reaches a '[' character, it looks ahead
+ * for the matching ']'. If the byte pointed to by the data pointer is zero,
+ * then we jump over to the right bracket and continue on from there. If it
+ * isn't zero, then we push the address of the left bracket onto a stack. When
+ * we get to the corresponding right bracket, if the byte pointed to by data is
+ * nonzero, then we jump back to the address at the top of the stack, it will
+ * be the address of the matching left bracket. If the byte is zero, then we
+ * pop off the top of the jump stack.
  *
- *  @author Alexander Malyshev
+ * @author Alexander Malyshev
  */
 
 #include <assert.h>
@@ -46,19 +47,20 @@ typedef struct jumpstack_t {
 static void init_bfin(void);
 /* jumpstack functions */
 static jumpstack *init_jumpstack(void);
-static void destroy_jumpstack(jumpstack *);
-static jumpstack *push_jump(jumpstack *, char *);
-static jumpstack *pop_jump(jumpstack *);
+static void destroy_jumpstack(jumpstack *stack);
+static jumpstack *push_jump(jumpstack *stack, char *leftbracket);
+static jumpstack *pop_jump(jumpstack *stack);
 /* memchunk functions */
 static memchunk *init_memchunk(void);
-static memchunk *overflow_left(memchunk *);
-static memchunk *overflow_right(memchunk *);
+static memchunk *overflow_left(memchunk *chunk);
+static memchunk *overflow_right(memchunk *chunk);
 /* reading input */
-static char *get_line(char *);
-static char *get_prog(FILE *, char *);
+static char *get_line(char *start);
+static char *get_prog(FILE *file, char *start);
 /* executing brainfuck code */
-static char *match_right(char *);
-static void execute(char *);
+static char *match_right(char *line);
+static void execute(char *line);
+
 
 /** @brief The size of chunks of memory on this system */
 static long chunklen;
@@ -70,10 +72,11 @@ static memchunk *page;
 static char *data;
 
 
-/** @brief Runs the brainfuck interpreter.
- *  @param argc the number of arguments.
- *  @param argv the array of arguments.
- *  @return Success status.
+/**
+ * @brief Runs the brainfuck interpreter.
+ * @param argc the number of arguments.
+ * @param argv the array of arguments.
+ * @return Success status.
  */
 int main(int argc, char *argv[]) {
     /*
@@ -97,6 +100,11 @@ int main(int argc, char *argv[]) {
      * we'll potentially resize line in get_line and get_prog, but we'll
      * always realloc it back to this original size for memory efficiency. */
     line = malloc(chunklen + 1);
+    if (line == NULL) {
+        fprintf(stderr, "Memory Allocation Error: Failed at allocating "
+                        "internal text buffer, exiting\n");
+        exit(1);
+    }
 
     /* if there was a file specified, attempt to read it in and execute it */
     if (argc == 2) {
@@ -152,11 +160,12 @@ static void init_bfin(void) {
 }
 
 
-/** @brief Initializes a new jumpstack
+/**
+ * @brief Initializes a new jumpstack
  *
- *  Will exit with an error if call to calloc fails
+ * Will exit with an error if call to calloc fails
  *
- *  @return The address of a new jumpstack
+ * @return The address of a new jumpstack
  */
 static jumpstack *init_jumpstack(void) {
     jumpstack *stack = calloc(1, sizeof(jumpstack));
@@ -170,11 +179,12 @@ static jumpstack *init_jumpstack(void) {
 }
 
 
-/** @brief Frees all the jumpstacks associated with 'stack'
+/**
+ * @brief Frees all the jumpstacks associated with 'stack'
  *
- *  'stack' may be NULL, in which case this function will do nothing
+ * 'stack' may be NULL, in which case this function will do nothing
  *
- *  @param stack the jumpstack we want to deallocate
+ * @param stack the jumpstack we want to deallocate
  */
 static void destroy_jumpstack(jumpstack *stack) {
     jumpstack *dead;
@@ -187,14 +197,15 @@ static void destroy_jumpstack(jumpstack *stack) {
 }
 
 
-/** @brief Pushes the address of a left bracket onto 'stack'
+/**
+ * @brief Pushes the address of a left bracket onto 'stack'
  *
- *  'stack' may be NULL
+ * 'stack' may be NULL
  *
- *  @param stack The address of the jumpstack we want to push leftbracket on
- *  @param leftbracket The address of the left bracket we want to store
+ * @param stack The address of the jumpstack we want to push leftbracket on
+ * @param leftbracket The address of the left bracket we want to store
  *
- *  @return The resulting jumpstack from pushing leftbracket onto stack
+ * @return The resulting jumpstack from pushing leftbracket onto stack
  */
 static jumpstack *push_jump(jumpstack *stack, char *leftbracket) {
     jumpstack *new;
@@ -208,11 +219,12 @@ static jumpstack *push_jump(jumpstack *stack, char *leftbracket) {
 }
 
 
-/** @brief Pops the top address off of stack
+/**
+ * @brief Pops the top address off of stack
  *
- *  @param stack The address of the jumpstack we want to pop the top off of
+ * @param stack The address of the jumpstack we want to pop the top off of
  *
- *  @return The resulting jumpstack after popping the top off of stack
+ * @return The resulting jumpstack after popping the top off of stack
  */
 static jumpstack *pop_jump(jumpstack *stack) {
     jumpstack *new;
@@ -227,11 +239,12 @@ static jumpstack *pop_jump(jumpstack *stack) {
 }
 
 
-/** @brief Allocates and initializes a new chunk of memory
+/**
+ * @brief Allocates and initializes a new chunk of memory
  *
- *  Will exit with an error if call to calloc or call to malloc fail
+ * Will exit with an error if call to calloc or call to malloc fail
  *
- *  @return The address of a new memchunk
+ * @return The address of a new memchunk
  */
 static memchunk *init_memchunk(void) {
     memchunk *chunk;
@@ -254,11 +267,12 @@ static memchunk *init_memchunk(void) {
 }
 
 
-/** @brief Adds on more memory to the left of chunk
+/**
+ * @brief Adds on more memory to the left of chunk
  *
- *  @param chunk the address of the current memchunk the interpreter is using
+ * @param chunk the address of the current memchunk the interpreter is using
  *
- *  @return The address of the new memchunk the interpreter will be using
+ * @return The address of the new memchunk the interpreter will be using
  */
 static memchunk *overflow_left(memchunk *chunk) {
     memchunk *new;
@@ -276,11 +290,12 @@ static memchunk *overflow_left(memchunk *chunk) {
 }
 
 
-/** @brief Adds on more memory to the right of chunk
+/**
+ * @brief Adds on more memory to the right of chunk
  *
- *  @param chunk the address of the current memchunk the interpreter is using
+ * @param chunk the address of the current memchunk the interpreter is using
  *
- *  @return The address of the new memchunk the interpreter will be using
+ * @return The address of the new memchunk the interpreter will be using
  */
 static memchunk *overflow_right(memchunk *chunk) {
     memchunk *new;
@@ -300,15 +315,16 @@ static memchunk *overflow_right(memchunk *chunk) {
 }
 
 
-/** @brief Gets a single line of input from the terminal
+/**
+ * @brief Gets a single line of input from the terminal
  *
- *  Will call realloc to dynamically resize a string to get all the input.
- *  Will exit with an error if call to realloc fails. 'start' is a char buffer
- *  with length at least 'chunklen + 1'
+ * Will call realloc to dynamically resize a string to get all the input.
+ * Will exit with an error if call to realloc fails. 'start' is a char buffer
+ * with length at least 'chunklen + 1'
  *
- *  @param start the buffer we want to use to copy the line of text into
+ * @param start the buffer we want to use to copy the line of text into
  *
- *  @return The line of text read in from the terminal
+ * @return The line of text read in from the terminal
  */
 static char *get_line(char *start) {
     char *end = start;
@@ -342,21 +358,21 @@ static char *get_line(char *start) {
 }
 
 
-/** @brief Reads all the text from file into a char buffer
+/**
+ * @brief Reads all the text from file into a char buffer
  *
- *  Will call realloc to dynamically resize a string to get all the input.
- *  Will exit with an error if call to realloc fails. start is a char buffer
- *  with length at least 'chunklen + 1'
+ * Will call realloc to dynamically resize a string to get all the input.
+ * Will exit with an error if call to realloc fails. start is a char buffer
+ * with length at least 'chunklen + 1'
  *
- *  @param file the file we want to read input from
- *  @param start the buffer we want to use to copy the file text into
+ * @param file the file we want to read input from
+ * @param start the buffer we want to use to copy the file text into
  *
- *  @return The text read in from file
+ * @return The text read in from file
  */
 static char *get_prog(FILE *file, char *start) {
     char *end = start;
-    size_t len = chunklen;
-    size_t read;
+    size_t len = chunklen + 1;
 
     assert(file != NULL);
     assert(start != NULL);
@@ -364,13 +380,17 @@ static char *get_prog(FILE *file, char *start) {
     /* read in the entire file */
     while (1) {
         /* read in a chunk's worth of text */
-        read = fread(end, 1, chunklen, file);
+        size_t read = fread(end, 1, chunklen, file);
+        end[read] = '\0';
 
-        /* stop if everything has been read out from the file */
-        if (feof(file)) {
-            end[read] = '\0';
-            break;
+        /* handle errors in the call to fread */
+        if (ferror(file)) {
+            fprintf(stderr, "Input Error: Could not read in entire file\n");
+            return NULL;
         }
+        /* stop if everything has been read out from the file */
+        if (feof(file))
+            break;
 
         /* otherwise allocate space for the next chunk to be read in */
         len += chunklen;
@@ -381,22 +401,23 @@ static char *get_prog(FILE *file, char *start) {
             return NULL;
         }
 
-        /* and update the where to write the chunk to */
-        end += chunklen;
+        /* and update the place where to write the chunk to */
+        end = start + len - chunklen - 1;
     }
 
     return start;
 }
 
 
-/** @brief Finds the next valid right bracket
+/**
+ * @brief Finds the next valid right bracket
  *
- *  *line is a left bracket. search to the right to find the next unmatched
- *  right bracket
+ * *line is a left bracket. search to the right to find the next unmatched
+ * right bracket
  *
- *  @param line the string in which we want to find a matching right bracket
+ * @param line the string in which we want to find a matching right bracket
  *
- *  @return the address of the right bracket if it exists, NULL otherwise
+ * @return the address of the right bracket if it exists, NULL otherwise
  */
 static char *match_right(char *line) {
     char *c;
@@ -420,12 +441,13 @@ static char *match_right(char *line) {
 }
 
 
-/** @brief Executes a line of brainfuck code
+/**
+ * @brief Executes a line of brainfuck code
  *
- *  line must be a valid brainfuck program. Exits with error if there is
- *  a bracket that wants us to jump but there is no matching bracket
+ * line must be a valid brainfuck program. Exits with error if there is
+ * a bracket that wants us to jump but there is no matching bracket
  *
- *  @param line the brainfuck code we want to execute
+ * @param line the brainfuck code we want to execute
  */
 static void execute(char *line) {
     char *c;
