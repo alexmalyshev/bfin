@@ -63,13 +63,13 @@ static void execute(char *line);
 
 
 /** @brief The size of chunks of memory on this system */
-static long chunklen;
+static long chunklen = -1;
 
 /** @brief The current chunk/page of memory we are on */
-static memchunk *page;
+static memchunk *page = NULL;
 
 /** @brief The data pointer specified by the brainfuck language */
-static char *data;
+static char *data = NULL;
 
 
 /**
@@ -130,7 +130,8 @@ int main(int argc, char *argv[]) {
         execute(line);
 
         /* clear out the line we just read in (attempt to handle EOF nicely) */
-        line[0] = '\0';
+        if (line != NULL)
+            line[0] = '\0';
 
         /* truncate 'line' back down to a page and reuse it */
         line = realloc(line, chunklen);
